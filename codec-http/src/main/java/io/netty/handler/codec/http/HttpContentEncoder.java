@@ -289,31 +289,31 @@ public abstract class HttpContentEncoder extends MessageToMessageCodec<HttpReque
 
     @Override
     public void handlerRemoved(ChannelHandlerContext ctx) throws Exception {
-        cleanup();
+        cleanupSafely(ctx);
         super.handlerRemoved(ctx);
     }
 
     @Override
     public void channelInactive(ChannelHandlerContext ctx) throws Exception {
-        cleanup();
+        cleanupSafely(ctx);
         super.channelInactive(ctx);
     }
 
     private void cleanup() {
         if (encoder != null) {
             // Clean-up the previous encoder if not cleaned up correctly.
-            if (encoder.finish()) {
-                for (;;) {
-                    ByteBuf buf = encoder.readOutbound();
-                    if (buf == null) {
-                        break;
-                    }
-                    // Release the buffer
-                    // https://github.com/netty/netty/issues/1524
-                    buf.release();
-                }
-            }
+            encoder.finishAndReleaseAll();
             encoder = null;
+        }
+    }
+
+    private void cleanupSafely(ChannelHandlerContext ctx) {
+        try {
+            cleanup();
+        } catch (Exception e) {
+            // If cleanup throws any error we need to propagate it through the pipeline and then ensure we call
+            // super.channelInactive(...) so the event is not lost.
+            ctx.fireExceptionCaught(e);
         }
     }
 
